@@ -16,6 +16,8 @@
   --accent-text: #ffffff;
   --header: #1f2937;
   --header-text: #f5f5f4;
+  --danger: #b91c1c;
+  --danger-border: #fecaca;
   --shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 * { box-sizing: border-box; }
@@ -52,8 +54,9 @@ main { padding: 12px; padding-bottom: 88px; }
 .card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; cursor: pointer;
 }
+.card:active { background: var(--border); }
 .card-photo {
   aspect-ratio: 1 / 1; width: 100%; object-fit: cover;
   background: var(--border); display: block;
@@ -92,6 +95,53 @@ main { padding: 12px; padding-bottom: 88px; }
 #drawer.open { transform: translateX(0); }
 .drawer-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
 .drawer-stub { color: var(--muted); font-size: 14px; }
+
+#editor {
+  position: fixed; inset: 0; z-index: 40; background: var(--bg);
+  display: none; flex-direction: column;
+}
+#editor.open { display: flex; }
+.editor-header {
+  flex: 0 0 auto;
+  background: var(--header); color: var(--header-text);
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top));
+}
+.editor-title { flex: 1 1 auto; font-size: 17px; font-weight: 600; }
+.header-text-btn {
+  flex: 0 0 auto; border: none; background: transparent; color: inherit;
+  font-size: 16px; font-weight: 600; padding: 8px 10px; border-radius: 8px; cursor: pointer;
+}
+.header-text-btn:active { background: rgba(255,255,255,0.15); }
+.editor-body { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
+#editor-photo-wrap {
+  width: 100%; max-width: 320px; margin: 0 auto 16px;
+}
+.editor-photo, .editor-photo-placeholder {
+  width: 100%; aspect-ratio: 1 / 1; border-radius: 12px;
+  display: block; object-fit: cover; background: var(--border);
+}
+.editor-photo-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 14px;
+}
+.photo-actions {
+  display: flex; gap: 8px; justify-content: center; margin-bottom: 24px;
+}
+.btn {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  height: 44px; padding: 0 16px; border-radius: 8px; font-size: 15px; cursor: pointer;
+}
+.btn:active { opacity: 0.7; }
+.btn-danger { color: var(--danger); border-color: var(--danger-border); background: var(--surface); }
+.field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+#name-input {
+  width: 100%; height: 44px; border: 1px solid var(--border); border-radius: 8px;
+  padding: 0 12px; font-size: 16px; background: var(--surface); color: var(--text);
+}
+.editor-error { color: var(--danger); font-size: 13px; margin-top: 8px; }
+.editor-footer { flex: 0 0 auto; padding: 16px; }
+#delete-card-btn { width: 100%; height: 48px; }
 </style>
 </head>
 <body>
@@ -113,12 +163,36 @@ main { padding: 12px; padding-bottom: 88px; }
   <div class="drawer-stub">Меню появится позже</div>
 </aside>
 
+<section id="editor" aria-label="Редактор формы">
+  <div class="editor-header">
+    <button id="editor-back" class="icon-btn" aria-label="Назад">←</button>
+    <div id="editor-title" class="editor-title">Новая форма</div>
+    <button id="editor-save" class="header-text-btn">Сохранить</button>
+  </div>
+  <div class="editor-body">
+    <div id="editor-photo-wrap"></div>
+    <div class="photo-actions">
+      <button id="photo-btn" type="button" class="btn">Добавить фото</button>
+      <button id="delete-photo-btn" type="button" class="btn btn-danger" hidden>Удалить фото</button>
+    </div>
+    <input id="photo-input" type="file" accept="image/*" hidden>
+    <label class="field-label" for="name-input">Название</label>
+    <input id="name-input" type="text" autocomplete="off">
+    <div id="editor-error" class="editor-error" hidden></div>
+  </div>
+  <div class="editor-footer">
+    <button id="delete-card-btn" type="button" class="btn btn-danger" hidden>Удалить форму</button>
+  </div>
+</section>
+
 <script>
 'use strict';
 
 const DB_NAME = 'wosk';
 const DB_VERSION = 1;
 const STORE = 'molds';
+const PHOTO_MAX_SIDE = 1024;
+const PHOTO_QUALITY = 0.82;
 
 let dbPromise = null;
 
@@ -177,6 +251,38 @@ async function clearMolds() {
   return reqToPromise((await getStore('readwrite')).clear());
 }
 
+function processPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w > PHOTO_MAX_SIDE || h > PHOTO_MAX_SIDE) {
+        if (w >= h) {
+          h = Math.round(h * PHOTO_MAX_SIDE / w);
+          w = PHOTO_MAX_SIDE;
+        } else {
+          w = Math.round(w * PHOTO_MAX_SIDE / h);
+          h = PHOTO_MAX_SIDE;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', PHOTO_QUALITY));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Не удалось загрузить изображение'));
+    };
+    img.src = url;
+  });
+}
+
 function renderGrid(molds) {
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
@@ -231,6 +337,154 @@ function buildCard(mold) {
   return card;
 }
 
+async function refreshGrid() {
+  const molds = await getAllMolds();
+  renderGrid(molds);
+}
+
+let editorState = null;
+let editorEl, editorTitleEl, nameInput, errorEl;
+let photoBtn, deletePhotoBtn, photoInput, deleteCardBtn;
+
+function showEditorError(msg) {
+  errorEl.textContent = msg;
+  errorEl.hidden = false;
+}
+
+function renderEditorPhoto() {
+  const wrap = document.getElementById('editor-photo-wrap');
+  wrap.textContent = '';
+  if (editorState.photo) {
+    const img = document.createElement('img');
+    img.className = 'editor-photo';
+    img.src = editorState.photo;
+    img.alt = '';
+    wrap.appendChild(img);
+    deletePhotoBtn.hidden = false;
+    photoBtn.textContent = 'Заменить фото';
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'editor-photo-placeholder';
+    ph.textContent = 'без фото';
+    wrap.appendChild(ph);
+    deletePhotoBtn.hidden = true;
+    photoBtn.textContent = 'Добавить фото';
+  }
+}
+
+function openEditor(mold) {
+  if (mold) {
+    editorState = {
+      id: mold.id,
+      count: mold.count || 0,
+      createdAt: mold.createdAt || null,
+      photo: mold.photo || null
+    };
+    editorTitleEl.textContent = 'Редактирование';
+    deleteCardBtn.hidden = false;
+    nameInput.value = mold.name;
+  } else {
+    editorState = { id: null, count: 0, createdAt: null, photo: null };
+    editorTitleEl.textContent = 'Новая форма';
+    deleteCardBtn.hidden = true;
+    nameInput.value = '';
+  }
+  errorEl.hidden = true;
+  renderEditorPhoto();
+  editorEl.classList.add('open');
+}
+
+async function openEditorById(id) {
+  const mold = await getMold(id);
+  if (mold) openEditor(mold);
+}
+
+function closeEditor() {
+  editorEl.classList.remove('open');
+  editorState = null;
+}
+
+async function saveEditor() {
+  const name = nameInput.value.trim();
+  if (!name) {
+    showEditorError('Введите название');
+    nameInput.focus();
+    return;
+  }
+  const mold = {
+    name,
+    count: editorState.count || 0,
+    photo: editorState.photo || null,
+    createdAt: editorState.createdAt || Date.now()
+  };
+  if (editorState.id != null) mold.id = editorState.id;
+  try {
+    if (mold.id != null) await putMold(mold);
+    else await addMold(mold);
+    closeEditor();
+    await refreshGrid();
+  } catch (err) {
+    console.error('Ошибка сохранения:', err);
+    showEditorError('Не удалось сохранить');
+  }
+}
+
+async function deleteCard() {
+  if (editorState.id == null) return;
+  if (!confirm('Удалить эту форму?')) return;
+  try {
+    await deleteMold(editorState.id);
+    closeEditor();
+    await refreshGrid();
+  } catch (err) {
+    console.error('Ошибка удаления:', err);
+    showEditorError('Не удалось удалить');
+  }
+}
+
+function setupEditor() {
+  editorEl = document.getElementById('editor');
+  editorTitleEl = document.getElementById('editor-title');
+  nameInput = document.getElementById('name-input');
+  errorEl = document.getElementById('editor-error');
+  photoBtn = document.getElementById('photo-btn');
+  deletePhotoBtn = document.getElementById('delete-photo-btn');
+  photoInput = document.getElementById('photo-input');
+  deleteCardBtn = document.getElementById('delete-card-btn');
+
+  document.getElementById('editor-back').addEventListener('click', closeEditor);
+  document.getElementById('editor-save').addEventListener('click', saveEditor);
+  deleteCardBtn.addEventListener('click', deleteCard);
+
+  photoBtn.addEventListener('click', () => photoInput.click());
+
+  photoInput.addEventListener('change', async () => {
+    const file = photoInput.files && photoInput.files[0];
+    photoInput.value = '';
+    if (!file) return;
+    try {
+      editorState.photo = await processPhoto(file);
+      renderEditorPhoto();
+    } catch (err) {
+      console.error('Ошибка обработки фото:', err);
+      showEditorError('Не удалось обработать фото');
+    }
+  });
+
+  deletePhotoBtn.addEventListener('click', () => {
+    editorState.photo = null;
+    renderEditorPhoto();
+  });
+
+  document.getElementById('fab').addEventListener('click', () => openEditor(null));
+
+  document.getElementById('grid').addEventListener('click', (e) => {
+    const card = e.target.closest('.card');
+    if (!card) return;
+    openEditorById(Number(card.dataset.id));
+  });
+}
+
 function setupDrawer() {
   const drawer = document.getElementById('drawer');
   const overlay = document.getElementById('drawer-overlay');
@@ -245,6 +499,7 @@ function setupDrawer() {
 
 async function init() {
   setupDrawer();
+  setupEditor();
   try {
     const molds = await getAllMolds();
     renderGrid(molds);
