@@ -1,11 +1,259 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Формы</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2937">
+<title>wosk</title>
+<style>
+:root {
+  --bg: #f5f5f4;
+  --surface: #ffffff;
+  --text: #1c1917;
+  --muted: #78716c;
+  --border: #e7e5e4;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --header: #1f2937;
+  --header-text: #f5f5f4;
+  --shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--header); color: var(--header-text);
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top));
+}
+.icon-btn {
+  flex: 0 0 auto; width: 40px; height: 40px;
+  border: none; background: transparent; color: inherit;
+  font-size: 22px; border-radius: 8px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.icon-btn:active { background: rgba(255,255,255,0.15); }
+#search {
+  flex: 1 1 auto; height: 40px; border: none; border-radius: 8px;
+  padding: 0 12px; font-size: 16px; background: var(--surface); color: var(--text);
+}
+main { padding: 12px; padding-bottom: 88px; }
+#grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.card-photo {
+  aspect-ratio: 1 / 1; width: 100%; object-fit: cover;
+  background: var(--border); display: block;
+}
+.card-placeholder {
+  aspect-ratio: 1 / 1; width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--border); color: var(--muted); font-size: 13px;
+}
+.card-body { padding: 10px; }
+.card-name { font-size: 14px; line-height: 1.3; word-break: break-word; }
+.card-count { margin-top: 6px; font-size: 13px; color: var(--muted); }
+#empty {
+  text-align: center; color: var(--muted);
+  padding: 64px 16px; font-size: 15px;
+}
+#fab {
+  position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom));
+  width: 56px; height: 56px; border-radius: 50%; border: none;
+  background: var(--accent); color: var(--accent-text);
+  font-size: 30px; line-height: 1;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.25); cursor: pointer; z-index: 20;
+}
+#drawer-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 30;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+#drawer-overlay.open { opacity: 1; pointer-events: auto; }
+#drawer {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: 280px; max-width: 80vw; background: var(--surface); z-index: 31;
+  transform: translateX(-100%); transition: transform 0.2s;
+  display: flex; flex-direction: column;
+  padding: 16px; padding-top: max(16px, env(safe-area-inset-top));
+}
+#drawer.open { transform: translateX(0); }
+.drawer-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+.drawer-stub { color: var(--muted); font-size: 14px; }
+</style>
 </head>
 <body>
-  <p>wosk: страница загружена</p>
+<header>
+  <button id="menu-btn" class="icon-btn" aria-label="Меню">☰</button>
+  <input id="search" type="search" placeholder="Поиск" autocomplete="off" inputmode="search">
+</header>
+
+<main>
+  <div id="grid" hidden></div>
+  <div id="empty">пока нет форм</div>
+</main>
+
+<button id="fab" aria-label="Добавить форму">+</button>
+
+<div id="drawer-overlay"></div>
+<aside id="drawer" aria-label="Боковое меню">
+  <div class="drawer-title">wosk</div>
+  <div class="drawer-stub">Меню появится позже</div>
+</aside>
+
+<script>
+'use strict';
+
+const DB_NAME = 'wosk';
+const DB_VERSION = 1;
+const STORE = 'molds';
+
+let dbPromise = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function getDB() {
+  if (!dbPromise) dbPromise = openDB();
+  return dbPromise;
+}
+
+function reqToPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getStore(mode) {
+  const db = await getDB();
+  return db.transaction(STORE, mode).objectStore(STORE);
+}
+
+async function addMold(mold) {
+  return reqToPromise((await getStore('readwrite')).add(mold));
+}
+
+async function getMold(id) {
+  return reqToPromise((await getStore('readonly')).get(id));
+}
+
+async function getAllMolds() {
+  return reqToPromise((await getStore('readonly')).getAll());
+}
+
+async function putMold(mold) {
+  return reqToPromise((await getStore('readwrite')).put(mold));
+}
+
+async function deleteMold(id) {
+  return reqToPromise((await getStore('readwrite')).delete(id));
+}
+
+async function clearMolds() {
+  return reqToPromise((await getStore('readwrite')).clear());
+}
+
+function renderGrid(molds) {
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  grid.textContent = '';
+
+  if (!molds.length) {
+    grid.hidden = true;
+    empty.hidden = false;
+    return;
+  }
+
+  empty.hidden = true;
+  grid.hidden = false;
+
+  for (const mold of molds) {
+    grid.appendChild(buildCard(mold));
+  }
+}
+
+function buildCard(mold) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.id = mold.id;
+
+  if (mold.photo) {
+    const img = document.createElement('img');
+    img.className = 'card-photo';
+    img.src = mold.photo;
+    img.alt = mold.name;
+    card.appendChild(img);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'card-placeholder';
+    ph.textContent = 'без фото';
+    card.appendChild(ph);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'card-body';
+
+  const name = document.createElement('div');
+  name.className = 'card-name';
+  name.textContent = mold.name;
+  body.appendChild(name);
+
+  const count = document.createElement('div');
+  count.className = 'card-count';
+  count.textContent = 'сделано: ' + (mold.count || 0);
+  body.appendChild(count);
+
+  card.appendChild(body);
+  return card;
+}
+
+function setupDrawer() {
+  const drawer = document.getElementById('drawer');
+  const overlay = document.getElementById('drawer-overlay');
+  const menuBtn = document.getElementById('menu-btn');
+
+  const open = () => { drawer.classList.add('open'); overlay.classList.add('open'); };
+  const close = () => { drawer.classList.remove('open'); overlay.classList.remove('open'); };
+
+  menuBtn.addEventListener('click', open);
+  overlay.addEventListener('click', close);
+}
+
+async function init() {
+  setupDrawer();
+  try {
+    const molds = await getAllMolds();
+    renderGrid(molds);
+  } catch (err) {
+    console.error('Ошибка инициализации базы:', err);
+  }
+}
+
+init();
+</script>
 </body>
 </html>
