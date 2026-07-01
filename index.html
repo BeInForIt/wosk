@@ -406,9 +406,36 @@ function buildCard(mold) {
   return card;
 }
 
+let allMolds = [];
+
+function getSearchTokens() {
+  return document.getElementById('search').value
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function filterMolds(molds, tokens) {
+  if (!tokens.length) return molds;
+  return molds.filter((mold) => {
+    const name = (mold.name || '').toLowerCase();
+    return tokens.every((token) => name.includes(token));
+  });
+}
+
+function renderFiltered() {
+  const tokens = getSearchTokens();
+  const filtered = filterMolds(allMolds, tokens);
+  renderGrid(filtered);
+  if (!filtered.length) {
+    document.getElementById('empty').textContent =
+      tokens.length ? 'ничего не найдено' : 'пока нет форм';
+  }
+}
+
 async function refreshGrid() {
-  const molds = await getAllMolds();
-  renderGrid(molds);
+  allMolds = await getAllMolds();
+  renderFiltered();
 }
 
 async function adjustCount(id, delta, card) {
@@ -423,6 +450,8 @@ async function adjustCount(id, delta, card) {
     if (!mold) { value.textContent = current; return; }
     mold.count = next;
     await putMold(mold);
+    const cached = allMolds.find((m) => m.id === id);
+    if (cached) cached.count = next;
   } catch (err) {
     console.error('Ошибка изменения счётчика:', err);
     value.textContent = current;
@@ -736,13 +765,17 @@ function setupDrawer() {
   overlay.addEventListener('click', close);
 }
 
+function setupSearch() {
+  document.getElementById('search').addEventListener('input', renderFiltered);
+}
+
 async function init() {
   setupDrawer();
   setupEditor();
   setupCropper();
+  setupSearch();
   try {
-    const molds = await getAllMolds();
-    renderGrid(molds);
+    await refreshGrid();
   } catch (err) {
     console.error('Ошибка инициализации базы:', err);
   }
