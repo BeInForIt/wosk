@@ -21,6 +21,22 @@
   --danger-border: #fecaca;
   --shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1114;
+    --surface: #1a1d21;
+    --text: #e7e5e4;
+    --muted: #9aa0a6;
+    --border: #33373d;
+    --accent: #3b82f6;
+    --accent-text: #ffffff;
+    --header: #1f2937;
+    --header-text: #f5f5f4;
+    --danger: #f87171;
+    --danger-border: #7f1d1d;
+    --shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+}
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
@@ -29,6 +45,20 @@ body {
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
 }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+header .icon-btn:focus-visible,
+.editor-header .icon-btn:focus-visible,
+.editor-header .header-text-btn:focus-visible,
+.cropper-header .header-text-btn:focus-visible {
+  outline-color: var(--header-text);
+}
+#fab:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -6px;
+}
 header {
   position: sticky; top: 0; z-index: 10;
   background: var(--header); color: var(--header-text);
@@ -36,20 +66,20 @@ header {
   padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top));
 }
 .icon-btn {
-  flex: 0 0 auto; width: 40px; height: 40px;
+  flex: 0 0 auto; width: 44px; height: 44px;
   border: none; background: transparent; color: inherit;
   font-size: 22px; border-radius: 8px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
 .icon-btn:active { background: rgba(255,255,255,0.15); }
 #search {
-  flex: 1 1 auto; height: 40px; border: none; border-radius: 8px;
+  flex: 1 1 auto; height: 44px; border: none; border-radius: 8px;
   padding: 0 12px; font-size: 16px; background: var(--surface); color: var(--text);
 }
 main { padding: 12px; padding-bottom: 88px; }
 #grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 12px;
 }
 .card {
@@ -73,7 +103,7 @@ main { padding: 12px; padding-bottom: 88px; }
   margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 .count-btn {
-  flex: 0 0 auto; width: 40px; height: 40px; border: 1px solid var(--border);
+  flex: 0 0 auto; width: 44px; height: 44px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text); border-radius: 8px;
   font-size: 22px; line-height: 1; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -196,16 +226,20 @@ main { padding: 12px; padding-bottom: 88px; }
   box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
   cursor: move; touch-action: none;
 }
-.crop-handle { position: absolute; width: 24px; height: 24px; touch-action: none; }
+.crop-handle { position: absolute; width: 44px; height: 44px; touch-action: none; }
 .crop-handle::after {
-  content: ''; position: absolute; left: 50%; top: 50%;
-  width: 14px; height: 14px; transform: translate(-50%, -50%);
+  content: ''; position: absolute;
+  width: 14px; height: 14px;
   background: #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
 }
-.crop-handle[data-h="nw"] { left: -12px; top: -12px; cursor: nwse-resize; }
-.crop-handle[data-h="ne"] { right: -12px; top: -12px; cursor: nesw-resize; }
-.crop-handle[data-h="sw"] { left: -12px; bottom: -12px; cursor: nesw-resize; }
-.crop-handle[data-h="se"] { right: -12px; bottom: -12px; cursor: nwse-resize; }
+.crop-handle[data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.crop-handle[data-h="nw"]::after { left: 0; top: 0; transform: translate(-50%, -50%); }
+.crop-handle[data-h="ne"] { right: 0; top: 0; cursor: nesw-resize; }
+.crop-handle[data-h="ne"]::after { right: 0; top: 0; transform: translate(50%, -50%); }
+.crop-handle[data-h="sw"] { left: 0; bottom: 0; cursor: nesw-resize; }
+.crop-handle[data-h="sw"]::after { left: 0; bottom: 0; transform: translate(-50%, 50%); }
+.crop-handle[data-h="se"] { right: 0; bottom: 0; cursor: nwse-resize; }
+.crop-handle[data-h="se"]::after { right: 0; bottom: 0; transform: translate(50%, 50%); }
 </style>
 </head>
 <body>
