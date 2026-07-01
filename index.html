@@ -106,7 +106,13 @@ main { padding: 12px; padding-bottom: 88px; }
 }
 #drawer.open { transform: translateX(0); }
 .drawer-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
-.drawer-stub { color: var(--muted); font-size: 14px; }
+.drawer-item {
+  display: block; width: 100%; text-align: left;
+  border: none; background: transparent; color: var(--text);
+  font-size: 15px; padding: 12px 8px; border-radius: 8px; cursor: pointer;
+}
+.drawer-item:active { background: var(--border); }
+.drawer-item-danger { color: var(--danger); }
 
 #editor {
   position: fixed; inset: 0; z-index: 40; background: var(--bg);
@@ -217,8 +223,11 @@ main { padding: 12px; padding-bottom: 88px; }
 <div id="drawer-overlay"></div>
 <aside id="drawer" aria-label="Боковое меню">
   <div class="drawer-title">wosk</div>
-  <div class="drawer-stub">Меню появится позже</div>
+  <button id="menu-export" type="button" class="drawer-item">Экспорт базы</button>
+  <button id="menu-import" type="button" class="drawer-item">Импорт базы</button>
+  <button id="menu-reset" type="button" class="drawer-item drawer-item-danger">Сбросить все счётчики</button>
 </aside>
+<input id="import-input" type="file" accept="application/json,.json" hidden>
 
 <section id="editor" aria-label="Редактор формы">
   <div class="editor-header">
@@ -329,6 +338,34 @@ async function deleteMold(id) {
 
 async function clearMolds() {
   return reqToPromise((await getStore('readwrite')).clear());
+}
+
+function replaceAllMolds(molds) {
+  return getDB().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    store.clear();
+    for (const mold of molds) store.put(mold);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  }));
+}
+
+function resetAllCounts() {
+  return getDB().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const req = store.getAll();
+    req.onsuccess = () => {
+      for (const mold of req.result) {
+        if (mold.count !== 0) { mold.count = 0; store.put(mold); }
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  }));
 }
 
 function renderGrid(molds) {
@@ -753,16 +790,100 @@ function setupEditor() {
   });
 }
 
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportDB() {
+  try {
+    const molds = await getAllMolds();
+    const payload = { app: 'wosk', version: 1, exportedAt: Date.now(), molds };
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    const d = new Date();
+    const stamp = d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+    downloadBlob(blob, `wosk-backup-${stamp}.json`);
+  } catch (err) {
+    console.error('Ошибка экспорта:', err);
+    alert('Не удалось экспортировать базу');
+  }
+}
+
+function importDB(file) {
+  const reader = new FileReader();
+  reader.onload = async () => {
+    let data;
+    try {
+      data = JSON.parse(reader.result);
+    } catch (err) {
+      console.error('Ошибка разбора файла:', err);
+      alert('Файл повреждён или не является бэкапом wosk');
+      return;
+    }
+    if (!data || data.app !== 'wosk' || !Array.isArray(data.molds)) {
+      alert('Файл не является бэкапом wosk');
+      return;
+    }
+    if (data.version !== 1) {
+      alert('Версия бэкапа не поддерживается');
+      return;
+    }
+    if (!confirm('Импорт заменит всю текущую базу данными из файла. Текущие формы и счётчики будут удалены безвозвратно. Продолжить?')) return;
+    try {
+      await replaceAllMolds(data.molds);
+      await refreshGrid();
+    } catch (err) {
+      console.error('Ошибка импорта:', err);
+      alert('Не удалось импортировать базу');
+    }
+  };
+  reader.onerror = () => {
+    console.error('Ошибка чтения файла:', reader.error);
+    alert('Не удалось прочитать файл');
+  };
+  reader.readAsText(file);
+}
+
+async function handleResetCounts() {
+  if (!confirm('Сбросить все счётчики к нулю? Отменить нельзя.')) return;
+  try {
+    await resetAllCounts();
+    await refreshGrid();
+  } catch (err) {
+    console.error('Ошибка сброса:', err);
+    alert('Не удалось сбросить счётчики');
+  }
+}
+
 function setupDrawer() {
   const drawer = document.getElementById('drawer');
   const overlay = document.getElementById('drawer-overlay');
   const menuBtn = document.getElementById('menu-btn');
+  const importInput = document.getElementById('import-input');
 
   const open = () => { drawer.classList.add('open'); overlay.classList.add('open'); };
   const close = () => { drawer.classList.remove('open'); overlay.classList.remove('open'); };
 
   menuBtn.addEventListener('click', open);
   overlay.addEventListener('click', close);
+
+  document.getElementById('menu-export').addEventListener('click', () => { close(); exportDB(); });
+  document.getElementById('menu-import').addEventListener('click', () => { close(); importInput.click(); });
+  document.getElementById('menu-reset').addEventListener('click', () => { close(); handleResetCounts(); });
+
+  importInput.addEventListener('change', () => {
+    const file = importInput.files && importInput.files[0];
+    importInput.value = '';
+    if (file) importDB(file);
+  });
 }
 
 function setupSearch() {
